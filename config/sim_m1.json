@@ -1,0 +1,9 @@
+{
+  "model": "rotate/anthropic/bedrock/us.anthropic.claude-sonnet-4-6@us-east-1,anthropic/bedrock/global.anthropic.claude-sonnet-4-6,anthropic/bedrock/eu.anthropic.claude-sonnet-4-6@eu-west-1,anthropic/claude-sonnet-4-6",
+  "envs_dir": "/home/ubuntu/work/control-tower/.environments",
+  "reference_dir": "/home/ubuntu/work/logs/m1/honest",
+  "trace_dir": "/home/ubuntu/work/logs/m1/sim_traces",
+  "max_lookups": 6,
+  "max_tokens": 8000,
+  "reference_chars": 60000
+}
