@@ -1,0 +1,9 @@
+{
+  "model": "rotate/anthropic/bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0@us-east-1,anthropic/bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0,anthropic/claude-haiku-4-5",
+  "envs_dir": "/home/ubuntu/work/control-tower/.environments",
+  "reference_dir": "/home/ubuntu/work/logs/m1/honest",
+  "trace_dir": "/home/ubuntu/work/logs/m3/sim2_traces",
+  "max_lookups": 6,
+  "max_tokens": 8000,
+  "reference_chars": 60000
+}
