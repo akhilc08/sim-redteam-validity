@@ -1,0 +1,9 @@
+rounds 64; dual available 64; strict available 64
+  none                   replay precision 27/39=0.69    none                   rerun  precision 36/40=0.90    kept 40/40 sim wins  total $123.04  $/kept real win 4.56
+  dual simulator         replay precision 7/9=0.78      dual simulator         rerun  precision 9/10=0.90     kept 10/40 sim wins  total $163.62  $/kept real win 23.37
+  strict judge           replay precision 27/38=0.71    strict judge           rerun  precision 36/39=0.92    kept 39/40 sim wins  total $148.64  $/kept real win 5.51
+  dual + strict          replay precision 7/9=0.78      dual + strict          rerun  precision 9/10=0.90     kept 10/40 sim wins  total $189.22  $/kept real win 27.03
+  spot-check  10%        replay precision 0.71 (expected)   extra cost $0.00 for 39 sim wins
+  spot-check  25%        replay precision 0.75 (expected)   extra cost $0.00 for 39 sim wins
+  spot-check  50%        replay precision 0.82 (expected)   extra cost $0.00 for 39 sim wins
+  spot-check 100%        replay precision 1.00 (expected)   extra cost $0.00 for 39 sim wins
