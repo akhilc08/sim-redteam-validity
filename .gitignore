@@ -1,0 +1,9 @@
+external/
+.venv/
+__pycache__/
+.env
+logs/
+*.pem
+*.egg-info/
+.pytest_cache/
+.DS_Store

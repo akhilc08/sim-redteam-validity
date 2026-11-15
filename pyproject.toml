@@ -1,0 +1,22 @@
+[project]
+name = "simrt"
+version = "0.1.0"
+description = "Does monitor red-teaming stay valid in a simulated environment?"
+requires-python = ">=3.13"
+# Runtime deps (inspect-ai, control-tower) come from the linuxarena-paper venv this is installed into.
+dependencies = []
+
+[project.entry-points.inspect_ai]
+simrt = "simrt._registry"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
