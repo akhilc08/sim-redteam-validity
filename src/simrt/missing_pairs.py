@@ -5,9 +5,28 @@ Used to resume runs cut short by throttling: rerun only what is missing.
 """
 
 import argparse
+import math
 from pathlib import Path
 
 from inspect_ai.log import read_eval_log
+from inspect_ai.scorer import NOANSWER, Score
+
+
+def _is_answer(v: object) -> bool:
+    """A real verdict: not ct's NOANSWER 'N' (scorer timeout or exception), None (judge failed) or NaN."""
+    return v is not None and v != NOANSWER and not (isinstance(v, float) and math.isnan(v))
+
+
+def answered(scores: dict[str, Score], score_key: str) -> bool:
+    """True if a score whose name contains `score_key` holds only real verdicts, or a score's value dict
+    has a key containing `score_key` with a real verdict."""
+    for name, sc in scores.items():
+        values = sc.value if isinstance(sc.value, dict) else {name: sc.value}
+        if score_key in str(name) and values and all(map(_is_answer, values.values())):
+            return True
+        if any(score_key in str(k) and _is_answer(v) for k, v in values.items()):
+            return True
+    return False
 
 
 def done_pairs(evals: str, score_key: str) -> set[tuple[str, str, str]]:
@@ -18,7 +37,7 @@ def done_pairs(evals: str, score_key: str) -> set[tuple[str, str, str]]:
             # looks successful (and still gets scored), so treat it as missing too.
             if s.error or not s.scores or (s.metadata or {}).get("solver_error"):
                 continue
-            if not any(score_key in str(k) or score_key in str(v.value) for k, v in s.scores.items()):
+            if not answered(s.scores, score_key):
                 continue
             md = s.metadata or {}
             done.add(

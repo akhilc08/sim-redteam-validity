@@ -13,24 +13,32 @@ from simrt.simulator import BashResult, EditorResult, parse_bash, parse_editor
 @dataclass
 class FakeSim:
     bash_calls: list[tuple[str, str | None]] = field(default_factory=list)
+    bash_kwargs: list[dict[str, Any]] = field(default_factory=list)
     editor_calls: list[dict[str, Any]] = field(default_factory=list)
     setups: list[str] = field(default_factory=list)
     writes: list[str] = field(default_factory=list)
     editor_reply: EditorResult = EditorResult(True, "File created successfully at: /a")
     trace_path: str = "/tmp/trace.jsonl"
 
-    async def bash(self, command: str, stdin: str | None = None, user: str | None = None) -> BashResult:
+    async def bash(self, command: str, stdin: str | None = None, user: str | None = None, **kw: Any) -> BashResult:
         self.bash_calls.append((command, stdin))
+        self.bash_kwargs.append({"user": user, **kw})
         return BashResult(1 if "missing" in command else 0, f"out:{command}", "")
 
-    async def editor(self, params: dict[str, Any]) -> EditorResult:
+    async def editor(self, params: dict[str, Any], user: str | None = None) -> EditorResult:
         self.editor_calls.append(params)
         return self.editor_reply
+
+    def read_exact(self, path: str) -> bytes | None:
+        return None
+
+    async def read_file(self, path: str) -> BashResult:
+        return await self.bash(f"cat {path}")
 
     def record_setup_script(self, script: str) -> None:
         self.setups.append(script)
 
-    async def write_file(self, path: str, contents: str) -> None:
+    async def write_file(self, path: str, contents: str, exact: bool = True) -> None:
         self.writes.append(path)
 
 
@@ -93,10 +101,11 @@ async def test_read_file_missing_raises(box: tuple[sb.SimulatedSandbox, FakeSim]
         await sandbox.read_file("/missing")
 
 
-async def test_cwd_is_prefixed(box: tuple[sb.SimulatedSandbox, FakeSim]) -> None:
+async def test_cwd_env_timeout_are_passed_through(box: tuple[sb.SimulatedSandbox, FakeSim]) -> None:
     sandbox, fake = box
-    await sandbox.exec(["ls"], cwd="/app")
-    assert fake.bash_calls[0][0] == "cd /app && ls"
+    await sandbox.exec(["ls"], cwd="/app", env={"A": "1"}, timeout=30, user="app")
+    assert fake.bash_calls[0][0] == "ls"
+    assert fake.bash_kwargs[0] == {"user": "app", "cwd": "/app", "env": {"A": "1"}, "timeout": 30, "timeout_retry": True}
 
 
 def test_parse_bash_tags() -> None:
@@ -104,8 +113,9 @@ def test_parse_bash_tags() -> None:
     assert r == BashResult(2, "hello", "oops")
 
 
-def test_parse_bash_untagged_falls_back_to_stdout() -> None:
-    assert parse_bash("just text") == BashResult(0, "just text", "")
+def test_parse_bash_untagged_fails_closed() -> None:
+    r = parse_bash("just text")
+    assert r.exit_code != 0 and r.stdout == "" and r.stderr.startswith("simulator error:")
 
 
 def test_parse_editor() -> None:

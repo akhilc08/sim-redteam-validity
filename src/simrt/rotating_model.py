@@ -3,9 +3,17 @@
 Bedrock enforces hidden per-route daily token caps on newer accounts. The same Claude model is
 reachable via several inference profiles (us./global.), each with its own cap. This provider is
 sticky (uses the first ready route in list order, which keeps prompt caches warm) and fails over
-to the next route when one is throttled, cooling the throttled route down, so a long run keeps
-going instead of stalling. When every route is cooling down, the error propagates to Inspect's
-normal retry/backoff (via should_retry).
+to the next route when one fails with a retryable error (throttling, overload, 5xx, connection or
+timeout errors), cooling that route down, so a long run keeps going instead of stalling. A
+non-retryable error (e.g. a bad request) is raised at once and not retried. When every route is
+cooling down, the error propagates to Inspect's normal retry/backoff (via should_retry).
+
+Errors are classified by exception type, HTTP status and AWS error code, never by message text alone:
+Inspect wraps a provider-returned error in a RuntimeError carrying the whole request, so matching on
+text would treat any prompt that mentions "per day" or "throttl" as a throttle and retry a bad request.
+Every output is tagged with the route that served it (output.metadata["rotate_route"], kept in the eval
+log's model events) and token usage is tallied per route in `route_usage`; Inspect's own usage stats
+record all routes under the one rotate/... name.
 """
 
 import logging
@@ -13,7 +21,7 @@ import os
 import time
 from typing import Any, Literal
 
-from inspect_ai.model import ChatMessage, GenerateConfig, Model, ModelAPI, ModelOutput, get_model, modelapi
+from inspect_ai.model import ChatMessage, GenerateConfig, Model, ModelAPI, ModelOutput, ModelUsage, get_model, modelapi
 from inspect_ai.model._model_call import ModelCall
 from inspect_ai.tool import ToolChoice, ToolInfo
 
@@ -21,20 +29,25 @@ logger = logging.getLogger(__name__)
 
 DAILY_CAP_COOLDOWN_S = 20 * 60
 RATE_LIMIT_COOLDOWN_S = 2 * 60
+TRANSIENT_COOLDOWN_S = 30  # other retryable failures (overload, 5xx, connection, timeout)
+THROTTLE_CODES = {"ThrottlingException", "Throttling", "TooManyRequestsException", "RequestThrottled",
+                  "RequestLimitExceeded"}
 
 # Shared across all instances in the process: a throttled route is throttled for everyone.
 _cooldown_until: dict[str, float] = {}
+route_usage: dict[str, ModelUsage] = {}
+
+
+def _aws_error_code(ex: BaseException) -> str | None:
+    resp = getattr(ex, "response", None)  # botocore ClientError; httpx responses are not dicts
+    return resp.get("Error", {}).get("Code") if isinstance(resp, dict) else None
 
 
 def classify_throttle(ex: BaseException) -> float | None:
-    """Cooldown seconds if `ex` is a throttle we should rotate away from, else None."""
-    text = f"{type(ex).__name__} {ex}".lower()
-    if "per day" in text:
-        return DAILY_CAP_COOLDOWN_S
-    status = getattr(ex, "status_code", None)
-    if status == 429 or "ratelimit" in text or "throttl" in text or "too many tokens" in text:
-        return RATE_LIMIT_COOLDOWN_S
-    return None
+    """Cooldown seconds if `ex` is a provider throttle (HTTP 429 or an AWS throttling code), else None."""
+    if getattr(ex, "status_code", None) != 429 and _aws_error_code(ex) not in THROTTLE_CODES:
+        return None
+    return DAILY_CAP_COOLDOWN_S if "per day" in str(ex).lower() else RATE_LIMIT_COOLDOWN_S
 
 
 def split_route(route: str) -> tuple[str, str | None]:
@@ -59,6 +72,17 @@ def _build_route(route: str, config: GenerateConfig) -> Model:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+
+def _tag(route: str, result: ModelOutput | tuple[ModelOutput | Exception, ModelCall]) -> Any:
+    """Record which route served the call, and its usage under that route."""
+    output = result[0] if isinstance(result, tuple) else result
+    if isinstance(output, ModelOutput):
+        output.metadata = {**(output.metadata or {}), "rotate_route": route}
+        if output.usage:
+            route_usage[route] = route_usage[route] + output.usage if route in route_usage else output.usage
+        logger.debug("rotate: served by %s", route)
+    return result
 
 
 class RotatingModelAPI(ModelAPI):
@@ -87,6 +111,10 @@ class RotatingModelAPI(ModelAPI):
         ready = [i for i in idx if _cooldown_until.get(self.route_names[i], 0) <= now]
         return ready or sorted(idx, key=lambda i: _cooldown_until.get(self.route_names[i], 0))[:1]
 
+    @staticmethod
+    def _retryable(api: ModelAPI, ex: Exception) -> bool:
+        return classify_throttle(ex) is not None or api.should_retry(ex)
+
     async def generate(
         self,
         input: list[ChatMessage],
@@ -94,24 +122,26 @@ class RotatingModelAPI(ModelAPI):
         tool_choice: ToolChoice,
         config: GenerateConfig,
     ) -> ModelOutput | tuple[ModelOutput | Exception, ModelCall]:
-        last: BaseException | None = None
+        last: Exception | None = None
         for i in self._order():
-            name = self.route_names[i]
+            name, api = self.route_names[i], self.routes[i].api
             try:
-                return await self.routes[i].api.generate(input, tools, tool_choice, config)
-            except Exception as ex:  # noqa: BLE001 - classify, then rotate or re-raise
-                cooldown = classify_throttle(ex)
-                if cooldown is None:
+                result = await api.generate(input, tools, tool_choice, config)
+            except Exception as ex:  # noqa: BLE001 - fail over on retryable errors, raise the rest
+                if not self._retryable(api, ex):
                     raise
+                cooldown = classify_throttle(ex) or TRANSIENT_COOLDOWN_S
                 _cooldown_until[name] = time.time() + cooldown
-                logger.warning("rotate: %s throttled (%ss cooldown): %s", name, cooldown, str(ex)[:120])
+                logger.warning("rotate: %s failed (%ss cooldown): %s", name, cooldown, str(ex)[:120])
                 last = ex
+                continue
+            return _tag(name, result)
         assert last is not None
         raise last
 
-    # ---- delegate provider behaviour to the primary route ------------------------------
+    # ---- delegate provider behaviour to the routes / the primary route -------------------
     def should_retry(self, ex: Exception) -> bool:
-        return classify_throttle(ex) is not None or self.primary.should_retry(ex)
+        return any(self._retryable(r.api, ex) for r in self.routes)
 
     def max_tokens(self) -> int | None:
         return self.primary.max_tokens()

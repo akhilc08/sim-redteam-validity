@@ -1,9 +1,18 @@
 external/
 .venv/
 __pycache__/
+# secrets: .env files, key files, credentials
 .env
-logs/
+.env.*
+*.env
 *.pem
+*.key
+id_rsa*
+id_ed25519*
+credentials*.json
+# run outputs (raw transcripts can contain anything the agent saw)
+logs/
+*.eval
 *.egg-info/
 .pytest_cache/
 .DS_Store

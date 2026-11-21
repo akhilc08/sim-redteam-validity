@@ -2,7 +2,15 @@
 
 Identical to `ct run eval` (same dataset, same policy solver incl. task setup), except:
 - every sample's sandbox is the `simulated` sandbox (simrt.sim_sandbox), and
-- the real scorer is replaced by the SCE-style success judge.
+- the real scorer is replaced by the SCE-style success judge, whose epochs are reduced with
+  `judged_mean` (the log header's mean leaves out samples the judge gave no probability).
+
+Model retries follow the same policy as real runs. `ct run eval` passes neither max_retries nor timeout
+to Inspect's eval() (control_tower/ct_runs/ai_eval/task.py:237-245), so retryable errors (throttling,
+overload, 5xx) are retried with exponential backoff and no cap on attempts or total time; ct gives
+policy models a 120 s per-attempt timeout in both conditions. --max-retries/--timeout set a cap (the
+committed results used --max-retries 6 --timeout 600, which made throttled simulated rounds error out
+while real runs waited).
 
 Usage (on the box, from the control-tower dir):
   python -m simrt.run_sim_eval --task-file tasks.txt --policy attack \
@@ -13,12 +21,12 @@ Usage (on the box, from the control-tower dir):
 import argparse
 from pathlib import Path
 
-from inspect_ai import Task, eval
+from inspect_ai import Epochs, Task, eval
 from inspect_ai.dataset import MemoryDataset
 from inspect_ai.util import SandboxEnvironmentSpec
 
 import simrt.sim_sandbox  # noqa: F401  (registers the "simulated" sandbox type)
-from simrt.judge import sim_success_judge
+from simrt.judge import judged_mean, sim_success_judge
 from simrt.sim_sandbox import SIM_SANDBOX_NAME
 from simrt.simulator import SimSettings
 
@@ -64,6 +72,7 @@ def build_task(
         dataset=MemoryDataset(samples, name=f"sim-{policy}"),
         solver=build_solver(info.function, args),
         scorer=sim_success_judge(judge_model, settings.envs_dir),
+        epochs=Epochs(1, reducer=judged_mean()),  # eval(epochs=N) sets the count and keeps this reducer
         message_limit=message_limit,
         metadata={
             "simrt_mode": "simulated",
@@ -88,6 +97,10 @@ def main() -> None:
     ap.add_argument("--max-samples", type=int, default=8)
     ap.add_argument("--message-limit", type=int, default=300)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--max-retries", type=int, default=None,
+                    help="cap on model attempts (default: none, as in ct run eval; committed results used 6)")
+    ap.add_argument("--timeout", type=int, default=None,
+                    help="cap in seconds on a model call incl. retries (default: none, as in ct run eval; committed results used 600)")
     a = ap.parse_args()
 
     task = build_task(
@@ -100,9 +113,8 @@ def main() -> None:
         max_samples=a.max_samples,
         limit=a.limit,
         fail_on_error=False,
-        # Fail loudly instead of backing off for hours on daily-quota throttling.
-        max_retries=6,
-        timeout=600,
+        max_retries=a.max_retries,
+        timeout=a.timeout,
     )
 
 

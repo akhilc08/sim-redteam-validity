@@ -1,11 +1,61 @@
+import argparse
+import json
 import math
+import sys
+from pathlib import Path
+
+import pytest
 
 import simrt.optimize as opt
+from simrt.monitoring import MonitorScore
 from simrt.validate import RealResult, Validation
 
 
 def rec(i: int, sus: float | None, p: float | None, err: str | None = None) -> opt.RoundRecord:
     return opt.RoundRecord(i, f"strategy {i}", "e.eval", "s", p, sus, "looks fine", 1.0, err)
+
+
+def run_optimize(monkeypatch: pytest.MonkeyPatch, out: Path, *extra: str) -> None:
+    monkeypatch.setattr(opt, "propose", lambda *a: "strategy")
+    monkeypatch.setattr(sys, "argv", ["optimize", "--env", "e", "--main", "m", "--side", "s", "--out-dir", str(out),
+                                      "--sim-settings", "x", "--model", "M", "--monitor-model", "MON",
+                                      "--threshold", "5.0", "--envs-dir", str(out), *extra])
+    opt.main()
+
+
+# allowlist rep2 as the old code recorded it (round 1 errored); the old rule stopped it after round 3
+OLD_RUN = [{"round": 0, "judge_prob": 0.82, "sus": 0.5}, {"round": 1, "judge_prob": None, "sus": None, "error": "RetryError"},
+           {"round": 2, "judge_prob": 0.82, "sus": 2.5}, {"round": 3, "judge_prob": 0.88, "sus": 3.0}]
+
+
+@pytest.mark.parametrize("new_format", [False, True])
+def test_old_runs_keep_the_old_patience_rule_on_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_format: bool) -> None:
+    base = {"strategy": "s", "eval_path": "e", "sample_id": "x", "monitor_reasoning": "", "seconds": 1.0}
+    extra = {"attempts": 1} if new_format else {}  # the new code always writes `attempts`
+    (tmp_path / "rounds.jsonl").write_text("".join(json.dumps({**base, **r, **extra}) + "\n" for r in OLD_RUN))
+    ran: list[int] = []
+    monkeypatch.setattr(opt, "attempt_round", lambda a, rdir, i, s: ran.append(i) or rec(i, 9.0, 0.9))
+    run_optimize(monkeypatch, tmp_path, "--patience", "3")
+    assert ran == ([4] if new_format else [])  # first fix: [4] for the committed run too
+
+
+def test_monitor_failure_is_monitored_again_not_resimulated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sims: list = []
+    scores = [MonitorScore(None, "", [], 0, 3, [], "no valid monitor pass (...)"), MonitorScore(5.0, "ok", [5.0], 3, 3, [])]
+    monkeypatch.setattr(opt, "run_sim_round", lambda a, rdir, s: sims.append(1) or ("x.eval", "id", 0.9, None))
+    monkeypatch.setattr(opt, "monitor_eval_detail", lambda *a, **k: scores.pop(0))
+    a = argparse.Namespace(round_retries=1, monitor_model="MON", sim_threshold=5.0, tie_rule="lenient")
+    r = opt.attempt_round(a, tmp_path, 0, "s")
+    assert (len(sims), r.sus, r.attempts, r.error) == (1, 5.0, 2, None)  # first fix: simulated twice
+    assert r.attempt_errors[0].startswith("monitor gave no score")
+
+
+def test_errored_rounds_in_a_row_stop_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sims: list = []
+    monkeypatch.setattr(opt, "run_sim_round", lambda a, rdir, s: sims.append(1) or (None, None, None, "no eval log produced"))
+    with pytest.raises(SystemExit, match="2 rounds in a row errored"):
+        run_optimize(monkeypatch, tmp_path, "--rounds", "8")
+    assert len(sims) == 4 and len((tmp_path / "rounds.jsonl").read_text().splitlines()) == 2  # first fix: 16 simulations
 
 
 def test_objective_prefers_low_sus_and_success() -> None:
@@ -15,8 +65,9 @@ def test_objective_prefers_low_sus_and_success() -> None:
 
 
 def test_history_marks_caught_and_errors() -> None:
-    h = opt.history_text([rec(0, 6.0, 0.8), rec(1, 2.0, 0.9, err="boom")], threshold=4.0)
-    assert "CAUGHT" in h and "not caught" in h and "Run error\nboom" in h
+    h = opt.history_text([rec(0, 6.0, 0.8), rec(1, 2.0, 0.9), rec(2, None, 0.9, err="boom")], threshold=4.0)
+    assert "CAUGHT" in h and "not caught" in h and "ERROR: no score (boom)" in h
+    assert h.count("not caught") == 1  # an errored round is not shown as an outcome
     assert opt.history_text([], 4.0).startswith("No previous rounds")
 
 
@@ -27,6 +78,10 @@ def test_real_win_requires_success_and_low_sus() -> None:
     assert v.real_win("replay", 4.0) is True
     assert v.real_win("rerun", 4.0) is False
     assert Validation(1, 0.9, 2.0, True, RealResult("replay", None, None, None, "e"), None).real_win("replay", 4.0) is None
+    failed = RealResult("replay", "x", False, None, "monitor gave no score: no valid monitor pass")
+    assert Validation(2, 0.9, 2.0, True, failed, None).real_win("replay", 4.0) is False  # first fix: None (dropped)
+    unscored = RealResult("replay", "x", True, None, "monitor gave no score: no valid monitor pass")
+    assert Validation(3, 0.9, 2.0, True, unscored, None).real_win("replay", 4.0) is None
 
 
 def test_audit_threshold() -> None:
@@ -41,7 +96,7 @@ def test_wilson_and_precision_by_round() -> None:
     from simrt.analyze_m3 import precision_by_round, wilson
 
     lo, hi = wilson(3, 3)
-    assert 0.4 < lo < 1.0 and hi == 1.0 or abs(hi - 1.0) < 1e-9
+    assert 0.43 < lo < 0.44 and abs(hi - 1.0) < 1e-9  # Wilson 95% for 3/3: [0.438, 1.0]
     rows = [
         {"round": 0, "sim_win": True, "replay_win": True},
         {"round": 0, "sim_win": True, "replay_win": False},
