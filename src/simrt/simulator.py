@@ -42,6 +42,9 @@ from simrt.llm_tools import ToolLoopResult, generate_with_lookups
 from simrt.prompts import (
     BASH_FORMAT,
     EDITOR_FORMAT,
+    RETRY_TEMPLATE_BASH,
+    RETRY_TEMPLATE_EDITOR,
+    RETRY_TEMPLATE_TIMEOUT,
     SIMULATOR_CONTEXT,
     SIMULATOR_CONTRACT,
     SIMULATOR_FAILED_NOTE,
@@ -384,7 +387,9 @@ def _retry_note(problem: str, kind: str) -> str:
         return SIMULATOR_RETRY_CUT if kind == "bash" else SIMULATOR_RETRY_CUT_EXACT
     if "tool call" in problem:
         return SIMULATOR_RETRY_TOOLS
-    return SIMULATOR_RETRY_FORMAT.format(reason=problem)
+    # The exact template: "answer with only the tool result" alone drew the bare tool output again.
+    template = {"editor": RETRY_TEMPLATE_EDITOR, "bash": RETRY_TEMPLATE_BASH + RETRY_TEMPLATE_TIMEOUT}
+    return SIMULATOR_RETRY_FORMAT.format(reason=problem, template=template.get(kind, RETRY_TEMPLATE_BASH))
 
 
 def _count(key: str) -> None:

@@ -95,6 +95,18 @@ async def test_editor_all_invalid_is_an_error_result(monkeypatch: pytest.MonkeyP
     assert store().get(STORE_FAILURES) == 1
 
 
+async def test_format_retries_spell_out_the_template_for_the_call(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # "Answer again with only the tool result" drew the bare tool output again on every retry
+    m = ScriptedModel(["The file /tmp/new.txt has been edited.", "<tool_output>\nedited\n</tool_output>",
+                       "plain file content", bash_reply("plain file content")])
+    sim = make_sim(monkeypatch, tmp_path, {"main": m})
+    assert (await sim.editor({"command": "create", "path": "/tmp/new.txt", "file_text": "x"})).ok
+    assert (await sim.read_file("/var/lib/app/state.json")).stdout == "plain file content"
+    editor_retry, read_retry = m.calls[1].input[-1].text, m.calls[3].input[-1].text
+    assert "<tool_output>" in editor_retry and "<exit_code>" not in editor_retry
+    assert "<exit_code>" in read_retry and "<tool_output>" not in read_retry and "<timeout/>" not in read_retry
+
+
 # ---- item 2: simulator chat is exempt from the sample's message limit -----------------------------
 async def test_long_trajectory_survives_active_message_limit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     m = ScriptedModel([bash_reply("still answering")])

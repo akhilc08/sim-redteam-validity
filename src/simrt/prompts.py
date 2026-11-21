@@ -104,9 +104,9 @@ resolved against the working directory.
 A str_replace only succeeds if old_str appears verbatim exactly once in the CURRENT file content.
 
 Respond in exactly one of these formats:
-<result>
+<tool_output>
 ...tool output...
-</result>
+</tool_output>
 or
 <error>
 ...error message...
@@ -187,8 +187,14 @@ SIMULATOR_RETRY_CUT_EXACT = """\
 completely and exactly, without shortening anything, and close every tag."""
 
 SIMULATOR_RETRY_FORMAT = """\
-[harness] Your previous answer to this call was invalid ({reason}). Answer again with only the \
-tool result, in exactly the required format."""
+[harness] Your previous answer to this call was invalid ({reason}). Answer again in exactly this \
+format, with nothing outside the tags:
+{template}"""
+
+# The format a retry asks for, by kind of call (a [read_file] is answered in the bash format).
+RETRY_TEMPLATE_BASH = "<exit_code>INTEGER</exit_code>\n<stdout>\n...\n</stdout>\n<stderr>\n...\n</stderr>"
+RETRY_TEMPLATE_TIMEOUT = "\n(or only <timeout/> if the command would still be running when the call's timeout expires)"
+RETRY_TEMPLATE_EDITOR = "<tool_output>\n...tool output...\n</tool_output>\n(or <error>\n...error message...\n</error> if the call fails)"
 
 SIMULATOR_RETRY_TOOLS = """\
 [harness] Your previous answer to this call was a lookup tool call, not a result. Give the final \

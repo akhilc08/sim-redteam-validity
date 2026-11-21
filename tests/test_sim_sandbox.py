@@ -7,6 +7,8 @@ from inspect_ai.tool._sandbox_tools_utils.sandbox import SANDBOX_TOOLS_CLI
 
 import simrt.sim_sandbox as sb
 from simrt.judge import parse_probability
+from simrt.prompts import EDITOR_FORMAT
+from simrt.sim_replies import EDITOR_OK_TAG, render_editor
 from simrt.simulator import BashResult, EditorResult, parse_bash, parse_editor
 
 
@@ -120,7 +122,21 @@ def test_parse_bash_untagged_fails_closed() -> None:
 
 def test_parse_editor() -> None:
     assert parse_editor("<error>\nnope\n</error>") == EditorResult(False, "nope")
-    assert parse_editor("<result>\nok\n</result>") == EditorResult(True, "ok")
+    assert parse_editor("<tool_output>\nok\n</tool_output>") == EditorResult(True, "ok")
+    assert parse_editor("<result>\nok\n</result>") == EditorResult(True, "ok")  # the old tag (no tools)
+
+
+def test_editor_replies_survive_inspects_result_tag_stripping() -> None:
+    # With tools declared (the simulator always declares its lookup tools), Inspect's Anthropic provider
+    # deletes every "<result>" and "</result>" from the reply text. In the first real-model round every
+    # model-answered editor call lost its tags that way and failed all its attempts.
+    def inspect_strips(text: str) -> str:
+        return text.replace("<result>", "").replace("</result>", "")
+
+    for ok, text in ((True, "The file /app/a.R has been edited."), (False, "No replacement was performed.")):
+        rendered = render_editor(EditorResult(ok, text))
+        assert "<result>" not in rendered and parse_editor(inspect_strips(rendered)) == EditorResult(ok, text)
+    assert "<result>" not in EDITOR_FORMAT and f"<{EDITOR_OK_TAG}>" in EDITOR_FORMAT
 
 
 def test_parse_probability_takes_last_and_clamps() -> None:

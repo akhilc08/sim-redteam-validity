@@ -2,16 +2,23 @@
 
 A bash reply is valid when its first block has an integer <exit_code>, every <stdout>/<stderr> it
 opens is closed, and any output is inside those tags (or it is a lone <timeout/> for a call that
-has a timeout). An editor reply is valid when its first <result> or <error> block is closed and
+has a timeout). An editor reply is valid when its first <tool_output> or <error> block is closed and
 non-empty. Text after the first block (a runaway continuation of the session) is ignored.
+
+The editor's success tag is <tool_output>, not <result>: Inspect's Anthropic provider deletes every
+"<result>" and "</result>" from a reply's text whenever tools are declared on the call (inspect_ai
+0.3.171, model/_providers/anthropic.py), and the simulator always declares its lookup tools. A
+<result> block is still accepted, for replies generated without tools.
 """
 
 import re
 from dataclasses import dataclass
 
 SIM_ERROR_PREFIX = "simulator error:"
+EDITOR_OK_TAG = "tool_output"
+_EDITOR_TAGS = (EDITOR_OK_TAG, "result", "error")  # "result": the old success tag, still accepted
 _NEXT_CALL = re.compile(r"\n\[(?:bash|text_editor|read_file)\]")
-_REPLY_TAG = re.compile(r"</?(?:exit_code|stdout|stderr|result|error)>|<timeout\s*/?>")
+_REPLY_TAG = re.compile(r"</?(?:exit_code|stdout|stderr|tool_output|result|error)>|<timeout\s*/?>")
 
 
 @dataclass(frozen=True)
@@ -101,23 +108,23 @@ def _bash_block(region: str) -> tuple[BashResult | None, str | None]:
 
 def check_editor(text: str) -> tuple[EditorResult | None, str | None]:
     """(result, None) for a valid editor reply, else (None, reason)."""
-    starts = {tag: text.find(f"<{tag}>") for tag in ("result", "error")}
+    starts = {tag: text.find(f"<{tag}>") for tag in _EDITOR_TAGS}
     present = {t: i for t, i in starts.items() if i >= 0}
     if not present:
-        return None, "empty reply" if not text.strip() else "missing <result>/<error> tag"
+        return None, "empty reply" if not text.strip() else f"missing <{EDITOR_OK_TAG}>/<error> tag"
     tag = min(present, key=lambda t: present[t])
-    other = "error" if tag == "result" else "result"
+    others = tuple(f"<{t}>" for t in _EDITOR_TAGS if t != tag)
     region = text[: _first_block_end(text[present[tag] :], f"<{tag}>") + present[tag]]
-    body, problem = _section(region, tag, (f"<{other}>",))
+    body, problem = _section(region, tag, others)
     if problem and "cut off" in problem:  # the output may legitimately contain a line like "[bash] ..."
-        full, _ = _section(text, tag, (f"<{other}>",))
+        full, _ = _section(text, tag, others)
         if full is not None and not _REPLY_TAG.search(full):  # not a made-up next call
             body, problem = full, None
     if problem or body is None:
         return None, problem or f"missing <{tag}> tag"
     if not body.strip():
         return None, f"empty <{tag}>"
-    return EditorResult(tag == "result", body), None
+    return EditorResult(tag != "error", body), None
 
 
 def bash_failure(reason: str) -> BashResult:
@@ -158,5 +165,5 @@ def render_bash(r: BashResult, limit: int = 0) -> str:
 
 
 def render_editor(r: EditorResult, limit: int = 0) -> str:
-    tag = "result" if r.ok else "error"
+    tag = EDITOR_OK_TAG if r.ok else "error"
     return f"<{tag}>\n{clip_middle(r.text, limit)}\n</{tag}>"
