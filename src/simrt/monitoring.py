@@ -440,7 +440,7 @@ def main() -> None:
     src.add_argument("--evals", help="directory of .eval logs to score")
     src.add_argument("--saved", nargs="+", help="monitor directories (holding run_<k>/) to read; never calls ct")
     ap.add_argument("--model", help="monitor model (needed to score --evals)")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="scores file; passes go to <out dir>/mon, one monitor model per dir")
     ap.add_argument("--n-runs", type=int, default=DEFAULT_RUNS)
     ap.add_argument("--retries", type=int, default=DEFAULT_RETRIES, help="extra attempts for an invalid pass")
     ap.add_argument("--timeout", type=float, default=MONITOR_TIMEOUT_S, help="seconds per ct monitor call")
@@ -455,10 +455,16 @@ def main() -> None:
         return
     if not a.model and not a.legacy:
         ap.error("--model is required to score --evals")
+    mon_root = Path(a.out).parent / "mon"  # one model per tree: another model's passes would be moved aside as stale
+    others = [] if a.legacy else sorted({m for p in mon_root.glob(f"*/run_*/{MARKER}") if re.fullmatch(
+        r"run_\d+", p.parent.name) and (m := _read_marker(p.parent).get("model")) not in (None, a.model)})
+    if others:
+        ap.error(f"{mon_root} holds passes scored by {', '.join(others)}, not {a.model}: give each monitor model its "
+                 "own --out directory (passes are saved under <out dir>/mon)")
     out: dict[str, dict] = {}
     failed: dict[str, dict] = {}
     for f in sorted(Path(a.evals).glob("*.eval")):
-        mon_dir = Path(a.out).parent / "mon" / f.stem
+        mon_dir = mon_root / f.stem
         try:
             per = monitor_samples(str(f), mon_dir, a.model or "", a.n_runs, retries=a.retries, timeout=a.timeout,
                                   legacy=a.legacy)
