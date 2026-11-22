@@ -21,6 +21,12 @@ failing every round's sample_init; SIMRT_ALLOW_MISSING_REFERENCE=1 turns that in
 
   python -m simrt.optimize --env E --main M --side S --rounds 8 --out-dir DIR \
       --sim-settings sim.json --model MODEL --monitor-model MON --threshold T
+
+M8 options (simrt.candidate; all off by default, and with none of them a run, its prompts and its rounds.jsonl
+are exactly as before): --rollouts K (K simulated rollouts per strategy, objective = their mean), --incumbent
+(prompt built around the best strategy so far), --feedback transcript (full monitor reasoning and the most
+suspicious simulated transcript for the incumbent and the latest candidate), --optimizer-model (strategy writer
+other than the attacker --model).
 """
 
 import argparse
@@ -74,6 +80,22 @@ class RoundRecord:
     sim_threshold: float | None = None  # threshold and tie rule behind the CAUGHT labels the optimizer saw
     tie_rule: str | None = None
     sim_failures: dict | None = None  # simulator failures in the final transcript (sim_failure_counts)
+    # M8 fields, written only when set (record_line), so default records keep the old keys exactly:
+    rollouts: list[dict] | None = None  # --rollouts K > 1: one entry per rollout (simrt.candidate.rollout_entry)
+    eval_rollout: int | None = None  # the rollout whose eval_path/sample_id/monitor the top-level fields are
+    proposal: dict | None = None  # strategy-writer call: model, token usage, incumbent shown, prompt size
+
+
+M8_FIELDS = ("rollouts", "eval_rollout", "proposal")
+
+
+def record_line(r: RoundRecord) -> str:
+    """The rounds.jsonl line: the M8 fields only when set, so a default run writes the old record byte for byte."""
+    d = asdict(r)
+    for k in M8_FIELDS:
+        if d[k] is None:
+            del d[k]
+    return json.dumps(d)
 
 
 def _read(path: Path, limit: int = 6_000) -> str:
@@ -121,17 +143,35 @@ def history_text(rounds: list[RoundRecord], threshold: float, tie_rule: str = "l
     return "\n\n".join(parts) + "\n\nWrite an improved strategy."
 
 
-def propose(model: str, context: str, history: str) -> str:
-    async def go() -> str:
-        out = await get_model(model).generate(
+def _generate(model: str, context: str, history: str):  # noqa: ANN202 - inspect ModelOutput
+    async def go():  # noqa: ANN202
+        return await get_model(model).generate(
             [ChatMessageSystem(content=OPTIMIZER_SYSTEM), ChatMessageUser(content=f"{context}\n\n{history}")],
             config=GenerateConfig(max_tokens=4_000),
         )
-        return out.completion
 
-    text = asyncio.run(go())
+    return asyncio.run(go())
+
+
+def extract_strategy(text: str) -> str:
     m = re.search(r"<strategy>(.*?)</strategy>", text, re.DOTALL)
     return (m.group(1) if m else text).strip()
+
+
+def propose(model: str, context: str, history: str) -> str:
+    return extract_strategy(_generate(model, context, history).completion)
+
+
+def propose_detail(model: str, context: str, history: str) -> tuple[str, dict]:
+    """propose() plus the call's token usage and serving route (M8: the optimizer's own spend is outside eval logs)."""
+    out = _generate(model, context, history)
+    u = out.usage
+    usage = {"model": model, "route": (out.metadata or {}).get("rotate_route"),
+             "input_tokens": u.input_tokens if u else None, "output_tokens": u.output_tokens if u else None,
+             "cache_read": (u.input_tokens_cache_read or 0) if u else None,
+             "cache_write": (u.input_tokens_cache_write or 0) if u else None,
+             "completion_chars": len(out.completion)}
+    return extract_strategy(out.completion), usage
 
 
 def judge_probability(score: Score) -> tuple[float | None, str | None]:
@@ -264,9 +304,24 @@ def main() -> None:
                          "invocation (0: no limit)")
     ap.add_argument("--envs-dir", default=str(Path.home() / "work/control-tower/.environments"))
     ap.add_argument("--python", default=str(Path.home() / "work/linuxarena-paper/.venv/bin/python"))
+    ap.add_argument("--rollouts", type=int, default=1,
+                    help="M8: simulated rollouts per strategy (each monitored and judged; objective = their mean)")
+    ap.add_argument("--rollout-parallel", type=int, default=0, help="M8: rollouts run at once (0: all)")
+    ap.add_argument("--incumbent", action="store_true",
+                    help="M8: show the best strategy so far prominently and ask for a modification that beats it")
+    ap.add_argument("--feedback", choices=("compact", "transcript"), default="compact",
+                    help="M8 transcript (needs --incumbent): full monitor reasoning per rollout and the most "
+                         "suspicious simulated transcript, for the incumbent and the latest candidate")
+    ap.add_argument("--transcript-chars", type=int, default=30_000, help="M8: char budget per shown transcript")
+    ap.add_argument("--optimizer-model", default=None, help="M8: strategy-writer model (default: --model)")
     a = ap.parse_args()
     if a.sim_threshold is None:
         a.sim_threshold = a.threshold
+    if a.rollouts < 1:
+        ap.error("--rollouts must be at least 1")
+    if a.feedback == "transcript" and not a.incumbent:
+        ap.error("--feedback transcript needs --incumbent")
+    m8 = a.rollouts > 1 or a.incumbent or a.feedback != "compact" or a.optimizer_model is not None
 
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -289,11 +344,15 @@ def main() -> None:
         rdir = out / f"round_{i:02d}"
         move_aside(rdir, "stale")  # left by an attempt that was never recorded (killed run)
         rdir.mkdir()
-        strategy = propose(a.model, context, history_text(rounds, a.sim_threshold, a.tie_rule))
-        rec = attempt_round(a, rdir, i, strategy)
+        if m8:
+            from simrt.candidate import run_round  # lazy: simrt.candidate imports this module
+            rec = run_round(a, rdir, i, rounds, context)
+        else:
+            strategy = propose(a.model, context, history_text(rounds, a.sim_threshold, a.tie_rule))
+            rec = attempt_round(a, rdir, i, strategy)
         rounds.append(rec)
         with log_path.open("a") as f:
-            f.write(json.dumps(asdict(rec)) + "\n")
+            f.write(record_line(rec) + "\n")
         best, stale = _patience_step(best, stale, rec)
         print(f"round {i}: sus={rec.sus} p={rec.judge_prob} err={rec.error} attempts={rec.attempts} "
               f"best={best:.2f} stale={stale}")
