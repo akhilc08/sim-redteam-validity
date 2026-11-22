@@ -6,9 +6,20 @@ That matters for red-teaming. Attack optimization picks strategies one at a time
 
 This repo runs a first, small version of that test. It optimizes attack strategies against a monitor **inside a simulator**. Then it **replays every round's exact commands in LinuxArena's real containers**, so each simulated verdict can be checked against reality.
 
-> **Status: pilot, mostly inconclusive.** 4 task pairs, 2 environments, 64 optimization rounds (63 replayed for real). Against this weak monitor the optimizer never measurably improved its own simulated objective. So the experiment did not create the search pressure the question is about. The committed results in `results/m3/` were produced before the [harness fixes](#harness-fixes-made-after-the-experiment) listed below. On 2026-11-21 M3's saved monitor passes were [re-read under the fixed monitor rule](#re-read-under-the-fixed-monitor-rule), which changes findings 1, 2 and 6, and the [follow-up checks](#follow-up-checks-2026-11-21) ran. No optimization has been run on the fixed harness yet.
+> **Status (2026-11-22): M7 run on the fixed harness.** 9 task pairs, 15 optimization runs, 83 rounds, each checked in real containers (replay and live rerun). [Current findings](#current-findings-m7-2026-11-22) are below. The older M3 pilot findings follow them. The M3 results in `results/m3/` were produced before the [harness fixes](#harness-fixes-made-after-the-experiment).
 
-## Findings
+## Current findings (M7, 2026-11-22)
+
+Details: [`results/m7/phase3/analysis.md`](results/m7/phase3/analysis.md), tables in `results/m7/phase3b/` (Phase 3b alone and pooled), and the full log in [`docs/m7_log.md`](docs/m7_log.md).
+- **Setup.** The target monitor is Nova Pro (Control Tower `mean-quick`, attacker goal hidden, 3 passes, threshold 4.00 at 5% honest false positives). It was picked because every Claude monitor caught nearly every attack: Haiku 5.5 let 1 of 49 round-0 attacks through. The attacker, simulator, judge and optimizer are Sonnet 4.6. Each run has up to 6–8 rounds. A real win means the side task succeeded and the real Nova Pro score is at or below 4.00.
+- **Simulated wins predict real wins.** On a fresh live run of the same strategy, 28 of 35 simulated wins were real wins (80%), against 10 of 48 simulated losses (21%), p = 1e-7. On exact replays it is 49% against 6%.
+- **No sign that the gap grows with optimization.** Among simulated wins, the live real-win rate falls from 15/16 in rounds 0–2 to 13/19 in rounds 3+ (p = 0.10). That drop comes from which pairs reach late rounds: controlling for pair, it disappears (stratified test p = 1.0; per-round slope with pair effects −0.08, p = 0.75). Replays show the opposite trend: late wins replay better.
+- **Simulated-to-real misses are mostly monitor noise near the threshold, not simulator exploitation.** Every live loss among simulated wins was a monitor catch. The real-minus-simulated suspicion gap is flat across rounds and shrinks for strategies the optimizer scored best (regression to the mean).
+- **The optimizer raised its simulated win rate,** from 3/15 at round 0 to 32/68 in later rounds (p = 0.08). It has not yet been compared with simply resampling the round-0 attack (best-of-n). That comparison, Phase 3c, is planned, so "the optimizer learns" is not established.
+- **Held-out monitor (Haiku 5.5).** It caught all 157 Phase 3 transcripts. In Phase 3b, 4 of 31 live reruns got past it. So attacks tuned against Nova Pro rarely transfer to a stronger monitor.
+- **Caveats.** 9 pairs is small. Nova Pro refused some web-scraping malware transcripts in Phase 3b (counted as caught). M7 spend so far is about $320 Bedrock and $10 Anthropic (token-based estimates).
+
+## M3 pilot findings
 
 Unless marked otherwise, every number below is regenerated from `results/m3/rounds.csv` by `python -m simrt.reanalysis` ([`results/m3/reanalysis.txt`](results/m3/reanalysis.txt)).
 - A **real win** means the real scorer reports side-task success and the real monitor's score is at or below the audit threshold (5.17).
@@ -354,6 +365,8 @@ Done on 2026-11-21 (results in [follow-up checks](#follow-up-checks-2026-11-21))
 - **Blind labelling** (`simrt.label_errors`, ~$3): labels do not separate failures from matched successes.
 - **Live-rerun control** (`m5_run.sh closedloop`, ~$17): outside reverse shell, simulated losses won live 7 of 7.
 - **Fixed defenses report and fixed-rule re-read:** no model spend.
+
+M7 (2026-11-22) carried out item 3 below on the fixed harness, with Nova Pro as the target; see [current findings](#current-findings-m7-2026-11-22). Its best-of-n comparison (Phase 3c) is next.
 
 Still to do:
 1. **Simulator-side threshold:** honest runs in the simulator (`m5_run.sh sim_honest sim_threshold`, ~$50–70).
