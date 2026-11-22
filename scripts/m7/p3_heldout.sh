@@ -2,7 +2,8 @@
 # p3_heldout.sh: score every Phase 3 transcript (simulated round_NN/eval, real_replay, real_rerun) with the
 # held-out monitor (Haiku 5.5, mean-quick, provide_goals=false, 3 passes) into
 # ~/work/logs/ar/phase3/heldout/<pair>/<rep>/<round>/<kind>/scores.json. Resumable (simrt.monitoring reuses
-# saved passes). The API key is used only for these monitor calls (with_key). Env: PARALLEL (4), NRUNS (3).
+# saved passes). KINDS limits the transcript kinds; run dirs whose opt.lock is held are skipped
+# unless NOLOCK=1 (safe for KINDS=eval once the optimizer is done); SKIP=<pair>/<rep> skips one run dir. The API key is used only for these monitor calls (with_key). Env: PARALLEL (4), NRUNS (3).
 set -euo pipefail
 export SIMRT_KEY_FILE="$HOME/work/.env.monitor"
 source "$HOME/work/simrt/scripts/box_env.sh"
@@ -14,7 +15,9 @@ P3="$W/logs/ar/phase3"; H="$P3/heldout"
 cd "$W/control-tower"
 for rd in "$P3"/runs/*/rep*/round_*; do
   rel="${rd#"$P3/runs/"}"
-  for kind in eval real_replay real_rerun; do
+  if [ -n "${SKIP:-}" ] && [[ "$rel" == $SKIP* ]]; then continue; fi
+  [ "${NOLOCK:-0}" = 1 ] || flock -n "$(dirname "$rd")/opt.lock" true || { echo "skip $rel (run dir locked: optimizer/validate live)"; continue; }
+  for kind in ${KINDS:-eval real_replay real_rerun}; do
     has_evals "$rd/$kind" || continue
     out="$H/$rel/$kind"; mkdir -p "$out"
     [ -f "$out/scores.json" ] && continue

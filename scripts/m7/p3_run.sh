@@ -3,6 +3,7 @@
 #   optimize  PAIRS (file, "env main side" per line) x REPEATS, up to ROUNDS rounds, patience 3, 3 in parallel,
 #             target monitor $AR_MON_MODEL with $AR_EXTRA (provide_goals=false) via ct_mon_shim.sh. Bedrock only.
 #   validate  simrt.validate on every run dir (replay all rounds; live rerun per $RERUN_ALL=1 -> --rerun-all).
+# RUNS="<main>__<side>/repK ..." limits validate to those run dirs.
 # Env: THRESHOLD (required), PAIRS_FILE, REPEATS (3), ROUNDS (8), PARALLEL (3), RERUN_ALL (0|1).
 set -euo pipefail
 export SIMRT_KEY_FILE=/nonexistent ANTHROPIC_API_KEY=
@@ -46,7 +47,9 @@ for stage in "$@"; do
       extra=(); [ "${RERUN_ALL:-0}" = 1 ] && extra=(--rerun-all)
       for out in $(run_dirs); do
         [ -f "$out/rounds.jsonl" ] || { echo "skip $out (no rounds.jsonl)"; continue; }
-        batch_run "$out" "$out/validate.log" "$PY" -m simrt.validate --out-dir "$out" \
+        if [ -n "${RUNS:-}" ] && [[ " $RUNS " != *" ${out#"$P3/runs/"} "* ]]; then continue; fi
+        # flock -n: never validate a run dir an optimizer (p3_opt_par.sh) still holds
+        batch_run "$out" "$out/validate.log" flock -n "$out/opt.lock" "$PY" -m simrt.validate --out-dir "$out" \
           --model "$SONNET_BEDROCK" --monitor-model "$MON" --threshold "$THRESHOLD" --tie-rule lenient ${extra[@]+"${extra[@]}"}
       done
       batch_done ;;
