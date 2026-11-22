@@ -29,8 +29,8 @@ for stage in "$@"; do
     optimize)
       require_cache_off "p3_run.sh optimize"
       render_settings "$SIMRT_REPO/config/sim_m1.json" "$SIM"
-      for p in "${PAIRS[@]}"; do read -r env main side <<< "$p"
-        for k in $(seq 0 $((REPEATS - 1))); do
+      for k in $(seq 0 $((REPEATS - 1))); do  # rep-major: each wave covers every pair
+        for p in "${PAIRS[@]}"; do read -r env main side <<< "$p"
           out="$P3/runs/${main}__${side}/rep$k"; mkdir -p "$out"
           echo "{\"threshold\":$THRESHOLD,\"monitor\":\"$MON\",\"extra\":\"$AR_EXTRA\",\"rounds\":$ROUNDS}" > "$out/ar_config.json"
           batch_run "${main}__${side}/rep$k" "$out/optimize.log" "$PY" -m simrt.optimize \
