@@ -40,4 +40,4 @@ Optimizing attacks against a monitor inside an LLM simulator (SCE-style) finds "
 - Real runs are Bedrock-only (`env SIMRT_KEY_FILE=/nonexistent ANTHROPIC_API_KEY=`).
 - Don't modify ~/work/logs/m1, m3 or m5, or the repo's committed results.
 - New box outputs go to ~/work/logs/ar/<phase>/.
-- Experimental code lives in this folder (autoresearch/code/) and imports simrt; it does not edit src/.
+- Experimental code lives in this folder (scripts/m7/) and imports simrt; it does not edit src/.
