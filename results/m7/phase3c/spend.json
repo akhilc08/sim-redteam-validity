@@ -1,0 +1,19 @@
+{
+ "target_monitor": {
+  "in": 10863102,
+  "out": 127302,
+  "usd": 9.1
+ },
+ "heldout_monitor": {
+  "in": 4089402,
+  "out": 118003,
+  "usd": 0.47
+ },
+ "agents_bedrock": {
+  "n_evals": 55,
+  "eval": 30.16,
+  "real_rerun": 8.87,
+  "usd": 39.03
+ },
+ "bedrock_usd": 48.13
+}

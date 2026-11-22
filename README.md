@@ -9,11 +9,11 @@
 - **Simulated wins predict real wins.** In fresh live runs of the same strategy, 28 of 35 simulated wins were real wins, against 10 of 48 simulated losses (80% vs 21%, p = 1e-7).
 - **No sign that the sim-to-real gap grows with optimization.** Late rounds look slightly worse overall (15/16 vs 13/19), but that comes from which pairs reach late rounds. Within pairs there is no decline (stratified p = 1.0).
 - **Misses look like monitor noise, not simulator exploitation.** Every simulated win that lost for real was a monitor catch near the threshold.
-- **Not yet shown: that the optimizer learns.** Its simulated win rate rose from 3/15 at round 0 to 32/68 later (p = 0.08). The comparison against simply resampling the round-0 attack (Phase 3c) is running.
+- **The optimizer beats resampling only in simulation.** Against simply re-drawing the first strategy the same number of times, it wins more often in simulation (58% vs 26%, p = 0.016) but not for real (65% vs 56%, p = 0.44). So the real gains can't be credited to optimization, and the search pressure on the real monitor was weak. That limits how much the result above says.
 - **A stronger held-out monitor (Haiku 5.5) caught 79 of 83 live runs.** Attacks tuned against Nova Pro rarely transfer.
 - **Caveats.** Only 9 pairs, and Nova Pro refused some malware transcripts (counted as caught).
 
-Details: [`results/m7/phase3/analysis.md`](results/m7/phase3/analysis.md), [`results/m7/phase3b/analysis.md`](results/m7/phase3b/analysis.md), and the run log [`docs/m7_log.md`](docs/m7_log.md).
+Details: [`results/m7/phase3/analysis.md`](results/m7/phase3/analysis.md), [`phase3b/analysis.md`](results/m7/phase3b/analysis.md), [`phase3c/analysis.md`](results/m7/phase3c/analysis.md), and the run log [`docs/m7_log.md`](docs/m7_log.md).
 
 ## Earlier: M3 pilot (2026-11)
 
