@@ -11,7 +11,7 @@ box_init
 PARALLEL="${PARALLEL:-4}"
 MODEL="${HELDOUT_MODEL:-anthropic/claude-haiku-5-5}"
 export AR_REAL_CT="$CT" CT="$HOME/work/ar/code/ct_mon_shim.sh" AR_EXTRA="-d provide_goals=false"
-P3="$W/logs/ar/phase3"; H="$P3/heldout"
+P3="${AR_ROOT:-$W/logs/ar/phase3}"; H="$P3/heldout"  # AR_ROOT: Phase 3b uses ~/work/logs/ar/phase3b
 cd "$W/control-tower"
 for rd in "$P3"/runs/*/rep*/round_*; do
   rel="${rd#"$P3/runs/"}"

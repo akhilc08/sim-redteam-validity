@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # p3_status.sh: one line per Phase 3 run dir (rounds done, validated rounds, live optimizer?) + job statuses.
-cd "$HOME/work/logs/ar/phase3/runs" || exit 0
+cd "${AR_ROOT:-$HOME/work/logs/ar/phase3}/runs" || exit 0
 for d in */rep*; do
   r=$(cat "$d/rounds.jsonl" 2>/dev/null | wc -l); v=$(cat "$d/validation.jsonl" 2>/dev/null | wc -l)
-  live=$(pgrep -f "out-dir $HOME/work/logs/ar/phase3/runs/$d( |$)" >/dev/null && echo run || echo -)
+  live=$(pgrep -f "out-dir ${AR_ROOT:-$HOME/work/logs/ar/phase3}/runs/$d( |$)" >/dev/null && echo run || echo -)
   stop=$(grep -c "early stop" "$d/optimize.log" 2>/dev/null)
   echo "$d rounds=$r val=$v $live stop=$stop"
 done | sed 's/__[a-z_]*\//\//'
