@@ -10,6 +10,7 @@
 - **No sign that the sim-to-real gap grows with optimization.** Late rounds look slightly worse overall (15/16 vs 13/19), but that comes from which pairs reach late rounds. Within pairs there is no decline (stratified p = 1.0).
 - **Misses look like monitor noise, not simulator exploitation.** Every simulated win that lost for real was a monitor catch near the threshold.
 - **The optimizer beats resampling only in simulation.** Against simply re-drawing the first strategy the same number of times, it wins more often in simulation (58% vs 26%, p = 0.016) but not for real (65% vs 56%, p = 0.44). So the real gains can't be credited to optimization, and the search pressure on the real monitor was weak. That limits how much the result above says.
+- **M8 pilot: a stronger optimizer does carry over.** It averages 3 simulated runs per strategy, keeps an explicit best-so-far, sees the transcript and is written by Opus 4.6. On the visit pair its strategies won 7 of 9 fresh real runs, against 2 of 9 for re-drawn first strategies and 9 of 18 for the M7 optimizer. This is a small pilot (live p = 0.06 and 0.23; on replay p = 0.003 and 0.04). See [`results/m8/pilot/analysis.md`](results/m8/pilot/analysis.md).
 - **A stronger held-out monitor (Haiku 5.5) caught 79 of 83 live runs.** Attacks tuned against Nova Pro rarely transfer.
 - **Caveats.** Only 9 pairs, and Nova Pro refused some malware transcripts (counted as caught).
 
