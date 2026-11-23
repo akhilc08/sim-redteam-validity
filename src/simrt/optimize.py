@@ -199,6 +199,9 @@ def run_sim_round(a: argparse.Namespace, rdir: Path, strategy: str) -> tuple[str
         *strategy_attack_args(a.model, rdir / "strat.txt"), "--sim-settings", a.sim_settings,
         "--judge-model", a.model, "--log-dir", str(rdir / "eval"), "--max-samples", "1",
     ]
+    cap = getattr(a, "sim_message_limit", None)  # M8 scale-up: lower message cap for simulated rollouts only
+    if cap is not None:
+        cmd += ["--message-limit", str(cap)]
     move_aside(rdir / "eval", "stale")  # only ever read a log this run wrote
     with (rdir / "sim.log").open("w") as log:
         rc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=False).returncode
@@ -314,7 +317,13 @@ def main() -> None:
                          "suspicious simulated transcript, for the incumbent and the latest candidate")
     ap.add_argument("--transcript-chars", type=int, default=30_000, help="M8: char budget per shown transcript")
     ap.add_argument("--optimizer-model", default=None, help="M8: strategy-writer model (default: --model)")
+    ap.add_argument("--sim-message-limit", type=int, default=None,
+                    help="message limit of each simulated rollout (passed to run_sim_eval --message-limit; default: "
+                         "run_sim_eval's 300). A rollout that hits it errors and is retried like any errored "
+                         "rollout (--round-retries). Real replays/reruns (simrt.validate) are not affected")
     a = ap.parse_args()
+    if a.sim_message_limit is not None and a.sim_message_limit < 1:
+        ap.error("--sim-message-limit must be at least 1")
     if a.sim_threshold is None:
         a.sim_threshold = a.threshold
     if a.rollouts < 1:

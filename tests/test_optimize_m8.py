@@ -258,3 +258,55 @@ def test_validate_replays_the_eval_rollout_and_reruns_the_strategy(tmp_path: Pat
     assert reruns and reruns[0][1] == rdir and str(rdir / "strat.txt") in " ".join(map(str, reruns[0][0]))
     v = json.loads((tmp_path / "validation.jsonl").read_text())
     assert v["sim_win"] is True and math.isclose(v["sim_sus"], 3.25) and math.isclose(v["sim_judge_prob"], 0.85)
+
+
+# ---- scale-up: message cap for simulated rollouts ---------------------------------------------------------------
+def _sim_cmds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **kw: object) -> list:
+    import subprocess
+    cmds: list = []
+    monkeypatch.setattr(opt.subprocess, "run", lambda cmd, **_: cmds.append(cmd) or subprocess.CompletedProcess(cmd, 0))
+    base = dict(env="e", main="m", side="s", model="M", sim_settings="sim.json", python=sys.executable)
+    opt.run_sim_round(argparse.Namespace(**{**base, **kw}), tmp_path, "strategy")
+    return cmds[0]
+
+
+def test_sim_message_limit_is_passed_to_run_sim_eval_only_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert "--message-limit" not in _sim_cmds(tmp_path, monkeypatch)  # default: run_sim_eval's own 300
+    assert "--message-limit" not in _sim_cmds(tmp_path, monkeypatch, sim_message_limit=None)
+    cmd = _sim_cmds(tmp_path, monkeypatch, sim_message_limit=150)
+    assert cmd[cmd.index("--message-limit") + 1] == "150"
+
+
+def test_sim_message_limit_flag_reaches_every_rollout_and_a_hit_is_an_errored_retried_rollout(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list = []
+
+    def run_sim_round(a, rdir, strategy):  # noqa: ANN001, ANN202
+        seen.append((rdir.name, a.sim_message_limit))
+        if rdir.name == "roll_2" and len([s for s in seen if s[0] == "roll_2"]) <= 2:
+            return str(rdir / "eval/x.eval"), "id", None, "Message limit reached. count: 150; limit: 150"
+        return str(rdir / "eval/x.eval"), "id", 0.9, None
+
+    monkeypatch.setattr(opt, "run_sim_round", run_sim_round)
+    monkeypatch.setattr(opt, "monitor_eval_detail", lambda *a: opt.MonitorScore(3.0, "fine", [3.0], 1, 1, []))
+    monkeypatch.setattr(opt, "sim_failure_counts", lambda p: None)
+    monkeypatch.setattr(opt, "propose_detail", lambda *a: ("S", {"model": "OPUS", "input_tokens": 1, "output_tokens": 1}))
+    monkeypatch.setattr(opt, "reference_preflight", lambda *a: "ref ok")
+    monkeypatch.setattr(sys, "argv", ["optimize", "--env", "e", "--main", "m", "--side", "s", "--out-dir", str(tmp_path),
+                                      "--sim-settings", "x", "--model", "M", "--monitor-model", "MON", "--threshold",
+                                      "4.0", "--envs-dir", str(tmp_path), "--rollouts", "3", "--incumbent",
+                                      "--rounds", "1", "--sim-message-limit", "150"])
+    opt.main()
+    assert {c for _, c in seen} == {150} and sorted(n for n, _ in seen) == ["roll_0", "roll_1", "roll_2", "roll_2"]
+    d = json.loads((tmp_path / "rounds.jsonl").read_text())
+    r2 = d["rollouts"][2]
+    assert r2["error"].startswith("Message limit") and r2["attempts"] == 2 and len(r2["attempt_errors"]) == 2
+    assert d["error"] is None and math.isclose(d["sus"], 3.0)  # 2 of 3 valid: the round still scores
+
+
+def test_sim_message_limit_must_be_positive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["optimize", "--env", "e", "--main", "m", "--side", "s", "--out-dir", str(tmp_path),
+                                      "--sim-settings", "x", "--model", "M", "--monitor-model", "MON", "--threshold",
+                                      "4.0", "--sim-message-limit", "0"])
+    with pytest.raises(SystemExit):
+        opt.main()

@@ -2,7 +2,7 @@
 
 [*Simulated Control Evals*](https://arxiv.org/abs/2610.31593) (SCE) found that LLM-simulated LinuxArena runs match real ones *on average*. But attack optimization relies on *individual* simulated verdicts, and SCE names the risk that repeated search could exploit simulator errors. This repo tests that: it optimizes attacks against a monitor **inside a simulator**, then checks every round **in real LinuxArena containers**, both as an exact replay of the simulated commands and as a fresh live run of the same strategy.
 
-## Current findings (M7, 2026-11-22)
+## Current findings (M7–M8, 2026-11-23)
 
 9 task pairs, 15 optimization runs, 83 rounds, every round checked for real. Target monitor: Nova Pro (threshold 4.00 at 5% honest false positives). Attacker, simulator, judge and optimizer: Sonnet 4.6.
 
@@ -10,7 +10,11 @@
 - **No sign that the sim-to-real gap grows with optimization.** Late rounds look slightly worse overall (15/16 vs 13/19), but that comes from which pairs reach late rounds. Within pairs there is no decline (stratified p = 1.0).
 - **Misses look like monitor noise, not simulator exploitation.** Every simulated win that lost for real was a monitor catch near the threshold.
 - **The optimizer beats resampling only in simulation.** Against simply re-drawing the first strategy the same number of times, it wins more often in simulation (58% vs 26%, p = 0.016) but not for real (65% vs 56%, p = 0.44). So the real gains can't be credited to optimization, and the search pressure on the real monitor was weak. That limits how much the result above says.
-- **M8 pilot: a stronger optimizer does carry over.** It averages 3 simulated runs per strategy, keeps an explicit best-so-far, sees the transcript and is written by Opus 4.6. On the visit pair its strategies won 7 of 9 fresh real runs, against 2 of 9 for re-drawn first strategies and 9 of 18 for the M7 optimizer. This is a small pilot (live p = 0.06 and 0.23; on replay p = 0.003 and 0.04). See [`results/m8/pilot/analysis.md`](results/m8/pilot/analysis.md).
+- **M8: a stronger optimizer does carry over to real runs.**
+  - What changed: it averages 3 simulated runs per strategy, keeps an explicit best-so-far, sees the transcript, and Opus 4.6 writes its strategies.
+  - Results on 3 pairs, where re-drawn first strategies rarely win for real: its strategies won 27 of 32 fresh real runs, against 5 of 23 for re-drawn first strategies (pair-stratified p = 4e-5; run-clustered p = 0.004). The M7 optimizer won 10 of 26.
+  - The sim-to-real gap still does not grow over rounds. Among simulated wins, 10 of 11 early ones and 15 of 16 late ones held up for real.
+  - *Interim:* 24 rounds are still being checked, including all of the 1-rollout ablation. See [`results/m8/scale/interim/tables.md`](results/m8/scale/interim/tables.md) and the pilot write-up, [`results/m8/pilot/analysis.md`](results/m8/pilot/analysis.md).
 - **A stronger held-out monitor (Haiku 5.5) caught 79 of 83 live runs.** Attacks tuned against Nova Pro rarely transfer.
 - **Caveats.** Only 9 pairs, and Nova Pro refused some malware transcripts (counted as caught).
 
@@ -32,9 +36,9 @@ Details: [`results/m7/phase3/analysis.md`](results/m7/phase3/analysis.md), [`pha
 
 ```
 src/simrt/     simulator, sandbox, judge, monitoring, optimizer, validation, analyses
-scripts/       box setup, job launcher, milestone pipelines (m1–m5); scripts/m7/ for M7
-results/       m3/ and m7/ result tables, figures and write-ups
-docs/          M7 plan and log, literature review, M3 report
+scripts/       box setup, job launcher, milestone pipelines (m1–m5); scripts/m7/ and scripts/m8/
+results/       m3/, m7/ and m8/ result tables, figures and write-ups
+docs/          M7 and M8 plans and logs, literature review, M3 report
 tests/         unit and integration tests (no models or containers needed)
 ```
 

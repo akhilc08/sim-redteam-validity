@@ -7,11 +7,13 @@
 # Env (Phase 3b): AR_ROOT (default ~/work/logs/ar/phase3), HO_KINDS (held-out transcript kinds, default all three),
 # POOL_WITH (another runs root: also write a pooled analysis to $AR_ROOT/analysis_pooled), VAL_ONLY_COUNT=1 (MAXV
 # counts only live validates under this root, not optimizers). While $AR_ROOT/MORE exists the loop keeps waiting
-# (more optimizer waves to come) instead of moving on to held-out scoring.
+# (more optimizer waves to come) instead of moving on to held-out scoring. AR_VAL_KEY_FILE (M8 scale-up, after the
+# Bedrock daily token cap): validate with the Anthropic API key from this file (set AR_SONNET=anthropic/claude-sonnet-4-6).
 set -uo pipefail
-export SIMRT_KEY_FILE=/nonexistent ANTHROPIC_API_KEY=
+export SIMRT_KEY_FILE="${AR_VAL_KEY_FILE:-/nonexistent}" ANTHROPIC_API_KEY=
 source "$HOME/work/simrt/scripts/box_env.sh"
 box_init
+VK=(); [ -n "${AR_VAL_KEY_FILE:-}" ] && VK=(with_key)
 SONNET_BEDROCK="${AR_SONNET:-$SONNET_BEDROCK}"  # AR_SONNET: longer rotate route list (Phase 3b: more regions, same model)
 P3="${AR_ROOT:-$W/logs/ar/phase3}"; C="$HOME/work/ar/code"; MAXV="${MAXV:-4}"
 export AR_REAL_CT="$CT" CT="$C/ct_mon_shim.sh" AR_EXTRA="-d provide_goals=false"
@@ -31,7 +33,7 @@ while :; do
     if [ "$running" -lt "$MAXV" ]; then
       tries[$out]=$(( ${tries[$out]:-0} + 1 ))
       echo "$(date -u +%FT%TZ) validate $out"
-      flock -n "$out/opt.lock" "$PY" -m simrt.validate --out-dir "$out" --model "$SONNET_BEDROCK" \
+      ${VK[@]+"${VK[@]}"} flock -n "$out/opt.lock" "$PY" -m simrt.validate --out-dir "$out" --model "$SONNET_BEDROCK" \
         --monitor-model "${AR_MON_MODEL:-bedrock/us.amazon.nova-pro-v1:0}" --threshold 4.00 --tie-rule lenient \
         --rerun-all >> "$out/validate.log" 2>&1 < /dev/null &
       running=$((running + 1)); sleep 5

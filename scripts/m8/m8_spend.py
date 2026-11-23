@@ -1,4 +1,5 @@
-"""M8 spend estimate from token counts (run on the box with $PY): python m8_spend.py [ROOT]
+"""M8 spend estimate from token counts (run on the box with $PY): python m8_spend.py [ROOT ...]
+With several roots (scale-up: one per arm), or --per-root, each root is reported under "roots" and the totals are summed.
 
 Extended copy of scripts/m7/p3_spend.py (same monitor and eval-log accounting, ROOT default ~/work/logs/m8/pilot),
 plus the strategy-writer calls, which are outside eval logs: every rounds.jsonl record's `proposal` usage (written
@@ -13,7 +14,9 @@ from pathlib import Path
 
 from inspect_ai.log import read_eval_log
 
-ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / "work/logs/m8/pilot"
+PER_ROOT = "--per-root" in sys.argv[1:]  # the multi-root output format even for one root (m8_budget.py)
+ROOTS = [Path(x) for x in sys.argv[1:] if x != "--per-root"] or [Path.home() / "work/logs/m8/pilot"]
+ROOT = ROOTS[0]
 MON = {"runs": (0.80, 3.20), "heldout": (0.10, 0.50)}
 CLAUDE = {"opus": (5.0, 25.0, 0.50, 6.25), "sonnet": (3.0, 15.0, 0.30, 3.75)}
 
@@ -67,7 +70,19 @@ def optimizer_spend() -> dict:
             "usd": round(tot["usd"], 2)}
 
 
-out = {"target_monitor": mon_spend("runs"), "heldout_monitor": mon_spend("heldout") if (ROOT / "heldout").exists()
-       else {"usd": 0}, "agents_bedrock": agent_spend(), "optimizer_bedrock": optimizer_spend()}
-out["bedrock_usd"] = round(out["target_monitor"]["usd"] + out["agents_bedrock"]["usd"] + out["optimizer_bedrock"]["usd"], 2)
-print(json.dumps(out, indent=1))
+def root_spend() -> dict:
+    out = {"target_monitor": mon_spend("runs"), "heldout_monitor": mon_spend("heldout") if (ROOT / "heldout").exists()
+           else {"usd": 0}, "agents_bedrock": agent_spend(), "optimizer_bedrock": optimizer_spend()}
+    out["bedrock_usd"] = round(out["target_monitor"]["usd"] + out["agents_bedrock"]["usd"] + out["optimizer_bedrock"]["usd"], 2)
+    out["anthropic_usd"] = out["heldout_monitor"]["usd"]
+    return out
+
+
+if len(ROOTS) == 1 and not PER_ROOT:
+    print(json.dumps(root_spend(), indent=1))
+else:
+    per = {}
+    for ROOT in ROOTS:
+        per[str(ROOT)] = root_spend() if (ROOT / "runs").exists() else {"bedrock_usd": 0.0, "anthropic_usd": 0.0}
+    print(json.dumps({"roots": per, "bedrock_usd": round(sum(v["bedrock_usd"] for v in per.values()), 2),
+                      "anthropic_usd": round(sum(v["anthropic_usd"] for v in per.values()), 2)}, indent=1))
