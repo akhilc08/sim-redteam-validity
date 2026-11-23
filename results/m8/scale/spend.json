@@ -1,0 +1,90 @@
+{
+ "roots": {
+  "/home/ubuntu/work/logs/m8/scale/resample": {
+   "target_monitor": {
+    "in": 6350646,
+    "out": 57610,
+    "usd": 5.26
+   },
+   "heldout_monitor": {
+    "in": 2654760,
+    "out": 77627,
+    "usd": 0.3
+   },
+   "agents_bedrock": {
+    "n_evals": 38,
+    "eval": 17.24,
+    "real_rerun": 6.67,
+    "eval.failed-0": 7.19,
+    "usd": 31.09
+   },
+   "optimizer_bedrock": {
+    "calls": 0,
+    "records_without_usage": 12,
+    "in": 0,
+    "out": 0,
+    "usd": 0.0
+   },
+   "bedrock_usd": 36.35,
+   "anthropic_usd": 0.3
+  },
+  "/home/ubuntu/work/logs/m8/scale/v2": {
+   "target_monitor": {
+    "in": 24544322,
+    "out": 272489,
+    "usd": 20.51
+   },
+   "heldout_monitor": {
+    "in": 6864726,
+    "out": 238118,
+    "usd": 0.81
+   },
+   "agents_bedrock": {
+    "n_evals": 194,
+    "real_rerun": 17.33,
+    "eval": 112.37,
+    "eval.failed-0": 24.29,
+    "usd": 154.0
+   },
+   "optimizer_bedrock": {
+    "calls": 36,
+    "records_without_usage": 0,
+    "in": 592238,
+    "out": 40633,
+    "usd": 3.98
+   },
+   "bedrock_usd": 178.49,
+   "anthropic_usd": 0.81
+  },
+  "/home/ubuntu/work/logs/m8/scale/v2r1": {
+   "target_monitor": {
+    "in": 4991498,
+    "out": 70044,
+    "usd": 4.22
+   },
+   "heldout_monitor": {
+    "in": 2037810,
+    "out": 89047,
+    "usd": 0.25
+   },
+   "agents_bedrock": {
+    "n_evals": 47,
+    "eval": 11.84,
+    "real_rerun": 4.73,
+    "eval.failed-0": 2.78,
+    "usd": 19.35
+   },
+   "optimizer_bedrock": {
+    "calls": 13,
+    "records_without_usage": 0,
+    "in": 170535,
+    "out": 14686,
+    "usd": 1.22
+   },
+   "bedrock_usd": 24.79,
+   "anthropic_usd": 0.25
+  }
+ },
+ "bedrock_usd": 239.63,
+ "anthropic_usd": 1.36
+}

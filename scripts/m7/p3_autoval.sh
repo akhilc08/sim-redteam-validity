@@ -14,6 +14,9 @@ export SIMRT_KEY_FILE="${AR_VAL_KEY_FILE:-/nonexistent}" ANTHROPIC_API_KEY=
 source "$HOME/work/simrt/scripts/box_env.sh"
 box_init
 VK=(); [ -n "${AR_VAL_KEY_FILE:-}" ] && VK=(with_key)
+# AR_MON_KEY_FILE (M8 scale-up, Bedrock Nova Pro capped): export the keys in this file (OPENROUTER_API_KEY) for the
+# target monitor, e.g. AR_MON_MODEL=openrouter/amazon/nova-pro-v1.
+if [ -n "${AR_MON_KEY_FILE:-}" ]; then set -a; . "$AR_MON_KEY_FILE"; set +a; fi
 SONNET_BEDROCK="${AR_SONNET:-$SONNET_BEDROCK}"  # AR_SONNET: longer rotate route list (Phase 3b: more regions, same model)
 P3="${AR_ROOT:-$W/logs/ar/phase3}"; C="$HOME/work/ar/code"; MAXV="${MAXV:-4}"
 export AR_REAL_CT="$CT" CT="$C/ct_mon_shim.sh" AR_EXTRA="-d provide_goals=false"

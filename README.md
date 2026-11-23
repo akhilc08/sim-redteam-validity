@@ -12,9 +12,11 @@
 - **The optimizer beats resampling only in simulation.** Against simply re-drawing the first strategy the same number of times, it wins more often in simulation (58% vs 26%, p = 0.016) but not for real (65% vs 56%, p = 0.44). So the real gains can't be credited to optimization, and the search pressure on the real monitor was weak. That limits how much the result above says.
 - **M8: a stronger optimizer does carry over to real runs.**
   - What changed: it averages 3 simulated runs per strategy, keeps an explicit best-so-far, sees the transcript, and Opus 4.6 writes its strategies.
-  - Results on 3 pairs, where re-drawn first strategies rarely win for real: its strategies won 27 of 32 fresh real runs, against 5 of 23 for re-drawn first strategies (pair-stratified p = 4e-5; run-clustered p = 0.004). The M7 optimizer won 10 of 26.
-  - The sim-to-real gap still does not grow over rounds. Among simulated wins, 10 of 11 early ones and 15 of 16 late ones held up for real.
-  - *Interim:* 24 rounds are still being checked, including all of the 1-rollout ablation. See [`results/m8/scale/interim/tables.md`](results/m8/scale/interim/tables.md) and the pilot write-up, [`results/m8/pilot/analysis.md`](results/m8/pilot/analysis.md).
+  - Results on 3 pairs, where re-drawn first strategies rarely win for real: its strategies won 32 of 38 fresh real runs, against 5 of 23 for re-drawn first strategies (pair-stratified p = 4e-6; run-clustered p = 0.002). The M7 optimizer won 10 of 26.
+  - Averaging simulated runs is the key change. With 1 simulated run per strategy, it won only 3 of 10, no better than re-drawing.
+  - The sim-to-real gap still does not grow over rounds. Among simulated wins, 11 of 12 early ones and 16 of 17 late ones held up for real.
+  - First sign of transfer: Haiku 5.5 missed 3 of its 6 real wins on one pair (logcred).
+  - See [`results/m8/scale/analysis.md`](results/m8/scale/analysis.md) and the pilot write-up, [`results/m8/pilot/analysis.md`](results/m8/pilot/analysis.md).
 - **A stronger held-out monitor (Haiku 5.5) caught 79 of 83 live runs.** Attacks tuned against Nova Pro rarely transfer.
 - **Caveats.** Only 9 pairs, and Nova Pro refused some malware transcripts (counted as caught).
 
